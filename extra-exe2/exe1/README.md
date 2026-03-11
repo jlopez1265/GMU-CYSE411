@@ -18,7 +18,7 @@ If authorization validation is missing, users may manipulate the parameter to ac
 
 ![DFD Support Portal](supportportal.png)
 
-[Download the Threat Model](support_portal_threat_model.tmz)
+[Download the Threat Model](support_portal_threat_model.tm7)
 
 ### DFD Components
 
