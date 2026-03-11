@@ -1,54 +1,82 @@
 # CYSE 411 – Threat Modeling and Risk Evaluation Assignment
 
-## Real-World Inspired Case: University Student Portal Data Exposure
+## Real-World Inspired Case: SQL Injection in a University Portal
 
 ### Background
 
-Several universities and online platforms have experienced **data exposure incidents caused by Broken Access Control vulnerabilities**, particularly **Insecure Direct Object References (IDOR)**.
+SQL Injection is one of the most historically impactful web vulnerabilities.  
+Many large-scale breaches—including incidents affecting universities, retail platforms, and government services—have occurred because applications trusted user input that was later executed as part of a database query.
 
-In multiple bug bounty reports and academic systems, attackers discovered that web applications exposed predictable identifiers in URLs or APIs. If the backend does not verify authorization properly, attackers can manipulate these identifiers to retrieve information belonging to other users.
+In SQL Injection attacks, an attacker manipulates application input so that it becomes part of the SQL query executed by the database. If input validation or parameterized queries are missing, the attacker may:
 
-Examples of vulnerable endpoints observed in real systems include:
+- retrieve confidential data
+- modify records
+- bypass authentication
+- destroy database content
 
-```
-GET /api/student/profile/{student_id}
-GET /api/student/transcript/{student_id}
-GET /api/library/account/{student_id}
-```
-
-In these cases, the system verifies that the user is **authenticated**, but fails to verify that the user is **authorized to access the requested resource**.
-
-Attackers with a legitimate account can modify identifiers such as `student_id` and retrieve sensitive data belonging to other users.
-
-This class of vulnerability is one of the most common issues in modern web systems and appears in the **OWASP Top 10 as Broken Access Control**.
+This type of vulnerability frequently occurs when **untrusted input crosses a trust boundary and is used directly in database queries without validation or sanitization**.
 
 Reference:
 
-OWASP Top 10 – Broken Access Control  
-https://owasp.org/www-project-top-ten/
+OWASP SQL Injection  
+https://owasp.org/www-community/attacks/SQL_Injection
 
 ---
 
 # System Description
 
-The university provides an online **Student Portal** that allows authenticated users to access several services.
+The university provides a **Student Portal** used by students and faculty.
 
-The portal provides the following functionality:
+The portal allows users to:
 
-- Students can view their personal profile
-- Students can retrieve their academic transcripts
-- Students can view their library account activity
-- Faculty can access course rosters
-- Administrative staff can manage student records
+- log into the system
+- view student profiles
+- search course enrollments
+- retrieve academic transcripts
+- check library account activity
 
-The system architecture includes:
+The application is implemented as a web-based system.
 
-**Components**
+### System Components
 
-- Web browser (client)
-- Student Portal API
+- Web Browser (client)
+- Student Portal Web Application
 - Student Database
 - Library Database
+
+---
+
+# Example Vulnerable Query
+
+The portal provides a search function allowing users to search for student profiles.
+
+The backend code constructs the following SQL query dynamically:
+
+```sql
+SELECT * FROM students WHERE last_name = '<user_input>';
+```
+
+The value `<user_input>` comes directly from an HTTP request parameter.
+
+If the application does not sanitize the input, an attacker could submit a malicious value such as:
+
+```sql
+' OR '1'='1
+```
+
+The resulting query becomes:
+
+```sql
+SELECT * FROM students WHERE last_name = '' OR '1'='1';
+```
+
+This causes the database to return **all student records**.
+
+More sophisticated attacks may allow the attacker to:
+
+- extract sensitive data
+- modify records
+- delete database tables
 
 ---
 
@@ -57,26 +85,22 @@ The system architecture includes:
 ```mermaid
 flowchart LR
 
-Student[Student User]
-Faculty[Faculty User]
+User[Student or Faculty User]
 
-API((Student Portal API))
+WebApp((Student Portal Web Application))
 
 StudentDB[(Student Database)]
 LibraryDB[(Library Database)]
 
-Student -- request profile --> API
-Student -- request transcript --> API
-Faculty -- request student record --> API
+User -- HTTP request --> WebApp
 
-API -- query student data --> StudentDB
-API -- query library account --> LibraryDB
+WebApp -- SQL query --> StudentDB
+WebApp -- SQL query --> LibraryDB
 
-StudentDB -- student data --> API
-LibraryDB -- account data --> API
+StudentDB -- query results --> WebApp
+LibraryDB -- query results --> WebApp
 
-API -- response --> Student
-API -- response --> Faculty
+WebApp -- response --> User
 ```
 
 ---
@@ -86,39 +110,28 @@ API -- response --> Faculty
 A critical trust boundary exists between:
 
 ```
-User Browser → Backend API
+User Browser → Web Application
 ```
 
-All requests crossing this boundary must be:
+User input received from HTTP requests must be treated as **untrusted data**.
 
-- validated
-- authenticated
-- authorized
-
-Failure to enforce these controls may allow attackers to manipulate requests.
+Failure to validate this input can allow attackers to inject malicious SQL commands.
 
 ---
 
 # Part 1 – Threat Elicitation
 
-Based on the system description, identify **up to five possible threats**.
-
-You may consider attacker models such as:
-
-- Authenticated malicious user
-- External attacker
-- Insider with legitimate access
-- Automated script or bot
+Based on the system description, identify **up to five threats** that could occur due to the SQL injection vulnerability.
 
 Hints:
 
-Possible attack ideas include:
+Possible attacker actions may include:
 
-- Manipulating API identifiers
-- Enumerating student IDs
-- Automating data harvesting
-- Accessing unauthorized records
-- Abusing API endpoints
+- retrieving confidential student data
+- bypassing authentication
+- modifying academic records
+- deleting database tables
+- escalating privileges
 
 ### Threat Enumeration Table
 
@@ -136,46 +149,46 @@ Students must identify **up to five threats**.
 
 # Part 2 – Threat Ranking Using DREAD
 
-Threat modeling identifies possible attacks, but organizations must determine **which threats are the most critical**.
+Threat modeling identifies possible attacks, but organizations must determine **which threats should be addressed first**.
 
-Threat ranking allows engineers to prioritize mitigation efforts.
+Threat ranking prioritizes risks based on potential consequences and likelihood.
 
-One method historically used in Microsoft’s Secure Development Lifecycle is **DREAD**.
+One historical method used in Microsoft's Secure Development Lifecycle is **DREAD**.
 
-DREAD evaluates threats using five criteria.
+DREAD evaluates threats across five criteria.
 
 | Criterion | Description |
 |-----------|-------------|
 | Damage | How severe would the attack be? |
 | Reproducibility | How easily can the attack be repeated? |
 | Exploitability | How difficult is it to perform the attack? |
-| Affected Users | How many users are impacted? |
+| Affected Users | How many users would be impacted? |
 | Discoverability | How easy is it to discover the vulnerability? |
 
-Each criterion is scored between **0 and 10**.
+Each criterion is scored from **0 to 10**.
 
 ---
 
 # Part 3 – Bug Bar Definition
 
-A **Bug Bar** is a set of predefined thresholds used by organizations to classify the severity of vulnerabilities.
+A **Bug Bar** is a set of predefined thresholds used by organizations to classify vulnerability severity.
 
 Bug Bars help teams:
 
 - standardize vulnerability scoring
 - prioritize remediation
-- ensure consistent security decisions
+- maintain consistent security decisions
 
-For example, the Bug Bar for **Damage** might look like:
+Example Bug Bar for **Damage**:
 
 | Score | Interpretation |
 |------|---------------|
 | 0 | No damage |
 | 5 | Limited information disclosure |
 | 8 | Exposure of sensitive personal data |
-| 10 | Complete system compromise |
+| 10 | Full database compromise |
 
-Students must construct similar Bug Bars for:
+Students must create similar Bug Bars for:
 
 - Reproducibility
 - Exploitability
@@ -186,15 +199,15 @@ Students must construct similar Bug Bars for:
 
 # Part 4 – Deriving Likelihood and Impact
 
-Many risk models simplify risk as:
+Many risk models simplify risk using:
 
 ```
 Risk = Likelihood × Impact
 ```
 
-However, DREAD provides **five dimensions**, not two.
+However, DREAD includes **five criteria**, not two.
 
-Your task is to design a method to convert DREAD into **Likelihood** and **Impact**.
+Students must design a method to derive **Likelihood** and **Impact** from the DREAD criteria.
 
 Example reasoning:
 
@@ -206,12 +219,11 @@ Impact = f(Damage, Affected Users)
 
 Students must:
 
-1. Propose a formula for computing likelihood
-2. Propose a formula for computing impact
-3. Explain the reasoning behind their design
-4. Justify any weighting applied
+1. Define their own formulas
+2. Explain the reasoning behind their design
+3. Justify any weighting used
 
-Example (students may propose alternatives):
+Example formula:
 
 ```
 Likelihood = (R + E + Dv) / 3
@@ -229,11 +241,13 @@ A  = Affected Users
 Dv = Discoverability
 ```
 
+Students may propose alternative models.
+
 ---
 
-# Part 5 – Applying DREAD
+# Part 5 – Apply DREAD
 
-Use your Bug Bar definitions and formulas to evaluate the threats you previously identified.
+Use your Bug Bar definitions and formulas to evaluate the threats identified earlier.
 
 | Threat | Damage | Reproducibility | Exploitability | Affected Users | Discoverability | Risk Score |
 |------|------|------|------|------|------|------|
@@ -257,15 +271,13 @@ Use your Bug Bar definitions and formulas to evaluate the threats you previously
 
 # Part 6 – Threat Mitigation
 
-For each threat identified, propose **security controls**.
+For each threat identified, propose security controls.
 
-Your controls must include at least one example of each type.
+Your controls must include:
 
-| Control Type | Description |
-|--------------|-------------|
-| Preventive | Prevent the attack from occurring |
-| Detective | Detect attacks in progress |
-| Corrective | Restore the system after an incident |
+- Preventive controls
+- Detective controls
+- Corrective controls
 
 ### Mitigation Table
 
@@ -277,16 +289,31 @@ Your controls must include at least one example of each type.
 | Threat 4 | | | |
 | Threat 5 | | | |
 
+Examples of controls may include:
+
+Preventive  
+- parameterized queries  
+- input validation  
+- least privilege database access
+
+Detective  
+- query logging  
+- anomaly detection  
+- security monitoring
+
+Corrective  
+- database backup restoration  
+- credential rotation  
+- incident response procedures
+
 ---
 
 # Reflection Questions
 
-Answer the following:
-
-1. Which threats had the highest risk score and why?
-2. Which DREAD criteria influenced the result the most?
-3. Do you think DREAD introduces subjectivity? Explain.
-4. How could system architecture changes reduce these risks?
+1. Which threat had the highest risk score and why?
+2. Which DREAD criteria influenced the final risk score the most?
+3. Do you believe DREAD introduces subjectivity into risk evaluation?
+4. What architectural changes could eliminate this vulnerability class?
 
 ---
 
