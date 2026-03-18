@@ -25,7 +25,7 @@ All fixes are **implemented and commented in the code**, and explained here.
 
 # 🔍 Vulnerabilities and Fixes
 
----
+
 
 ## 1️⃣ CSRF (Cross-Site Request Forgery)
 
@@ -128,4 +128,131 @@ req.session.regenerate(() => { ... });
 - Prevents attacker from reusing a known session ID
 
 📌 Key Insight: Authentication must create a new trusted session.
+
+
+---
+
+## 4️⃣ Broken Access Control (Admin Panel)
+
+### ❌ Problem
+
+```JavaScript
+if (req.session.user)
+```
+
+- Any logged-in user could access admin functionality
+
+### ✅ Fix Implemented
+
+```JavaScript
+if (req.session.role !== "admin")
+```
+
+✔ Explanation
+
+- Enforces role-based access control
+
+- Only authorized users can access sensitive endpoints
+
+📌 Key Insight: Authentication ≠ Authorization
+
+---
+
+## 5️⃣ IDOR (Insecure Direct Object Reference)
+
+### ❌ Problem
+
+```JavaScript
+/account/:id
+```
+
+- User could access any account by changing ID
+
+
+### ✅ Fix Implemented
+
+```JavaScript
+userOwnsAccount(req.session.userId, accountId)
+```
+
+✔ Explanation
+
+- Server verifies ownership before returning data
+
+📌 Key Insight: Never trust user-controlled identifiers.
+
+---
+
+## 6️⃣ Parameter Tampering
+### ❌ Problem
+
+```JavaScript
+const from = req.body.fromAccount;
+```
+
+- User controls source account
+
+### ✅ Fix Implemented
+
+```JavaScript
+const from = req.session.userAccount;
+```
+
+✔ Explanation
+
+- Sensitive values must come from the server, not the client
+
+📌 Key Insight: The client is not a trusted source of truth.
+
+---
+
+## 7️⃣ Business Logic Abuse
+
+### ❌ Problem
+
+- No validation of transfer amount
+
+- Negative or invalid transactions possible
+
+### ✅ Fix Implemented
+
+```JavaScript
+if (amount <= 0)
+```
+
+✔ Explanation
+
+- Ensures only valid operations are executed
+
+- Protects workflow integrity
+
+📌 Key Insight: Security is not only about input — it is also about process correctness.
+
+---
+
+## 🛡️ Defense-in-Depth Applied
+
+This solution uses multiple layers:
+
+Layer	Protection
+Session	HttpOnly, SameSite
+Authentication	bcrypt
+Request validation	CSRF token
+Authorization	role checks
+Data protection	ownership validation
+Logic validation	input constraints
+
+## 🧠 Secure Coding Mindset
+
+- Students should learn to ask:
+
+- What does the browser do automatically?
+
+- What assumptions does the server make?
+
+- Can the user control this input?
+
+- Is this action tied to user intent?
+
+- Can this workflow be abused?
 
